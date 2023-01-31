@@ -166,3 +166,180 @@ List<Team> resultList = em.createQuery(query, Team.class)
 
 ➡️ 페치 조인을 사용할때만 연관된 엔티티도 **함께 조회(즉시 로딩)**
 ➡️ **페치 조인은 객체 그래프를 SQL 한번에 조회하는 개념**
+
+<br>
+
+#### 💡 페치 조인의 특징과 한계
+- **페치 조인 대상에는 별칭을 줄 수 없음**
+    ```
+    String query = "select t from Team t join fetch t.members m"; ➡️ 불가능
+
+    String query = "select t from Team t join fetch t.members "; ➡️ 가능 별칭 없애야 함
+    ```
+    - 하이버네이트는 가능, 가급적 사용 x
+
+- **둘 이상의 컬렉션은 페치 조인 할 수 없음**
+    - 페치 조인의 컬렉션은 하나만 지정 가능
+
+- **컬렉션을 페치 조인하면 페이징 API(setFirstResult, setMaxResults) 사용 불가**
+    - 일대일, 다대일 같은 단일 값 연관 필드들은 페치 조인해도 페이징 가능
+    - 컬렉션(일대다/다대다)의 경우: 하이버네이트는 경고로그를 남기고 메모리에서 페이징(매우 위험)
+    ```
+    String query = "select t from Team t join fetch t.members m";
+    List<Team> resultList = em.createQuery(query, Team.class)
+                    .setFirstResult(0)
+                    .setMaxResults(1)
+                    .getResultList();
+    ➡️ 일대다 :  위험함
+
+    String query = "select m from Member m join fetch m.team";
+    List<Member> resultList = em.createQuery(query, Member.class)
+                    .setFirstResult(0)
+                    .setMaxResults(1)
+                    .getResultList();
+    ➡️ 다대일 : 일대다를 다대일로 변경  - 안전
+
+    또는 @BatchSize 어노테이션 사용!
+
+    <property name="default_batch_fetch_size" value="100"/>
+    
+    /
+    
+    @BatchSize(size =100)
+    @OneToMany(mappedBy = "team")
+    private List<Member> members = new ArrayList<>();
+
+    ```
+<BR>
+
+#### ✅ 페치 조인: 연관된 엔티티들을 SQL 한번으로 조회 - 성능 최적화
+- 엔티티에 직접 적용하는 글로벌 로딩 전략보다 우선함
+    - @OneToMany(fetch = FetchType.LAZY) //글로벌 로딩 전략
+- 실무에서 글로벌 로딩 전략은 모두 지연 로딩
+- 최적화가 필요한 곳은 페치 조인 적용
+- 모든 것을 페치 조인으로 해결 불가
+- 페치 조인은 객체 그래프를 유지할 때 사용하면 효과적
+    - m.team / m.name 등을 찾아갈때 좋음
+- 여러 테이블을 조인해서 엔티티가 가진 모양이 아닌 전혀 다른 결과를 내야 하면, 페치 조인 보단 일반 조인을 사용해서 필요한 데이터들만 조회 -> DTO로 반환하는 것이 효과적
+
+<BR><bR>
+
+## JPQL - 다형성 쿼리
+
+<img width="351" alt="image" src="https://user-images.githubusercontent.com/81572478/215675223-fba20c53-19db-437d-a230-d2947e4ad5b8.png">
+
+- TYPE
+    - 조회 대상을 특정 자식으로 한정 가능
+        EX) ITEM 중에서 Book, Movie를 조회해라
+
+    - [JPQL]
+        ```select i from Item i where tyep(i) IN (Book, Movie)```
+
+    - [SQL]
+        ```select i from i where i.DTYPE in ('B','M')```
+
+- TREAT
+    - 자바의 타입 캐스팅과 유사
+    - 상속 구조에서 부모 타입을 특정 자식 타입으로 다룰때 사용
+    - FROM, WHERE, SELECT(하이버네이트 지원) 사용
+
+    EX) 부모인 Item과 자식 Book이 있을때
+
+    - [JPQL]
+        ```select i from Item i where treat(i as Book).author = 'kim'```
+
+    - [SQL]
+        ```select i.* from Item i where i.DTYPE='B' and i.author = 'kim'```
+
+<br><Br>
+
+## JPQL - 엔티티 직접 사용
+
+- 기본키 값
+    : JPQL에서 엔티티를 직접 사용하면 SQL에서 해당 엔티티의 기본키 값 사용
+
+    - [JPQL]
+    ```select count(m.id) from Member m //엔티티의 아이디를 사용```
+    ```select count(m) from Member m //엔티티를 직접 사용```
+
+    - [SQL](JPQL 둘다 같은 다음 SQL 실행)
+    ```select count(m.id) as cnt from Member m```
+
+    <img width="425" alt="image" src="https://user-images.githubusercontent.com/81572478/215676152-a7c564a0-7655-42bf-a2b3-ab0b08ab3a5b.png">
+
+- 외래키 값
+
+    <img width="427" alt="image" src="https://user-images.githubusercontent.com/81572478/215676713-b8a91b00-df93-4147-bdc6-03de0ea6236d.png">
+
+<br><Br>
+
+## JPQL - Named 쿼리
+
+- 미리 정의해서 이름을 부여해두고 사용하는 JPQL = 쿼리에 이름 부여해 재활용 가능
+
+- 정적 쿼리
+
+- 어노테이션, XML에 정의
+    - xml이 항상 우선권을 가지고, 애플리케이션 운영 환경에 따라 다른 xml 배포 가능
+- 애플리케이션 로딩 시점에 초기화 후 재사용
+- **애플리케이션 로딩 시점에 쿼리를 검증**
+
+<img width="425" alt="image" src="https://user-images.githubusercontent.com/81572478/215679969-d70b528f-3a93-4c7f-a72a-0f952d171b14.png">
+
+<br><Br>
+
+## JPQL - 벌크 연산
+
+- 재고가 10개 미만인 모든 상품의 가격을 10% 상승하려면?
+- JPA 변경 감지 기능으로 실행하려면 너무 많은 SQL 실행됨
+    1. 재고가 10개 미만인 상품을 리스트로 조회
+    2. 상품 엔티티의 가격을 10% 증가
+    3. 트랜잭션 커밋 시점에 변경 감지 동작
+    - 변경된 데이터가 100건이라면 100번의 UPDATE SQL 실행
+
+EX) 쿼리 한번으로 여러 테이블 ROW 변경(ENTITY)
+
+```
+int resultCount = em.createQuery("update Member m set m.age = 20")
+                    .executeUpdate();
+
+System.out.println("resultCount = " + resultCount);
+```
+- executeUpdate()의 결과는 영향받은 엔티티 수 반환
+- UPDATE, DELETE 지원
+- INSERT(insert into  .. select, 하이버네이트 지원)
+
+    <img width="393" alt="image" src="https://user-images.githubusercontent.com/81572478/215681298-3439e126-21cb-4999-91cb-1a351d02d5bd.png">
+
+<br>
+📌 벌크 연산 주의
+
+- 벌크 연산은 영속성 컨텍스트를 무시하고 데이터베이스에 직접 쿼리
+    - 벌크 연산을 먼저 실행
+    - 벌크 연산 수행 후 영속성 컨텍스트 초기화
+
+    ```
+    Member member3 = new Member();
+    member3.setName("회원 3");
+    member3.setTeam(team2);
+    em.persist(member3);
+
+    // FLUSH 자동 호출 (member들 다 persist됨)
+    int resultCount = em.createQuery("update Member m set m.age = 20")
+            .executeUpdate();
+
+    // 아직 영속성 컨텍스트 초기화 X
+    Member member1 = em.find(Member.class, member.getId());
+    System.out.println("member1 = " + member1.getAge()); // 0
+
+    em.clear();
+
+    // 영속성 컨텍스트 초기화
+    Member member1 = em.find(Member.class, member.getId());
+    System.out.println("member1 = " + member1.getAge()); // 20
+
+    ```
+
+
+
+    
