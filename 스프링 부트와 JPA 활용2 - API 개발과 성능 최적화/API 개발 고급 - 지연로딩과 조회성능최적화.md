@@ -1,4 +1,4 @@
-## 주문 조회
+## 주문 조회 (XtoOne 관계 조회)
 ### 간단한 주문 조회 V1 : 엔티티 직접 노출
 ```
     @GetMapping("/api/v1/simple-orders")
@@ -95,3 +95,49 @@
 
 - fetch join으로 쿼리 1번만 호출
 - fetch join으로 order->member, order->delivery는 이미 조회된 상태이므로 지연로딩 x
+
+
+<br><Br>
+
+### 간단한 주문 조회 V4 : JPA에서 DTO로 바로 조회
+
+
+```
+    @GetMapping("/api/v4/simple-orders")
+    public List<OrderSimpleQueryDto> ordersV4() {
+        return orderSimpleQueryRepository.findOrderDtos();
+    }
+
+
+    ✅ OrderRepository - 추가 코드 (오로지 화면을 위한 코드)
+    public List<OrderSimpleQueryDto> findOrderDtos() {
+        return em.createQuery(
+                "select new jpabook.jpashop.repository.OrderSimpleQueryDto(o.id, m.name, o.orderDate, o.status, d.address) " +
+                        " from Order o " +
+                        " join o.member m" +
+                        " join o.delivery d", OrderSimpleQueryDto.class)
+                .getResultList();
+    }
+
+```
+- 일반적인 SQL을 사용할 때 처럼 원하는 값을 선택해서 조회
+- new 명령어를 사용해서 JPQL의 결과를 DTO로 즉시 변환
+- SELECT 절에서 원하는 데이터를 직접 선택하므로 DB -> 애플레키이션 네트워크 용량 최적화(BUT 생각보다 미비)
+- 리포지토리 재상요성 떨어짐, API 스펙에 맞춘 코드가 리포지토리에 들어가는 단점
+
+<BR>
+
+### ✍️ 정리
+
+엔티티를 DTO로 변환하거나, DTO로 바로 조회하는 두 가지 방법은 각각 장단점이 존재!
+
+둘중 상황에 따라서 더 나은 방법을 선택하면 됨
+
+엔티티로 조회하면 리포지토리 재사용성도 좋고, 개발도 단순해짐
+
+**쿼리 방식 선택 권장 순서**
+1. 우선 엔티티를 DTO로 변환하는 방법을 선택한다.
+2. 필요하면 페치 조인으로 성능을 최적화 한다. 대부분의 성능 이슈가 해결된다.
+3. 그래도 안되면 DTO로 직접 조회하는 방법을 사용한다.
+4. 최후의 방법은 JPA가 제공하는 네이티브 SQL이나 스프링 JDBC Template을 사용해서 SQL을 직접
+사용한다.
