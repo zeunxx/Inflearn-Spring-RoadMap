@@ -219,10 +219,10 @@ ToOne 관계는 페치 조인해도 페이징에 영향을 주지 않음.
     ✅ OrderRepository - 추가 코드
 
     public List<OrderQueryDto> findOrderQueryDtos() {
-        List<OrderQueryDto> result = findOrders();
+        List<OrderQueryDto> result = findOrders(); // query 1번 -> N개
 
         result.forEach(o -> {
-             List<OrderItemQueryDto> orderItems = findOrderItems(o.getOrderId());
+             List<OrderItemQueryDto> orderItems = findOrderItems(o.getOrderId()); // query N개 나감
              o.setOrderItems(orderItems);
         });
         return result;
@@ -257,3 +257,83 @@ ToOne 관계는 페치 조인해도 페이징에 영향을 주지 않음.
     - 1️⃣ ToOne 관계는 조인해도 데이터 row 증가 x
     - 2️⃣ ToMany(1:N) 관계는 조인하면 row 증가
 - row 수가 증가하지 않는 ToOne 관계는 조인으로 최적화하기 쉬우므로 한번에 조회, ToMany 관계는 최적화 하기 어려우므로 ```findOrderItems()``` 같은 별도의 메서드로 조회
+
+<br><Br>
+
+### 주문 조회 V5 : JPA에서 DTO 직접 조회 - 컬렉션 조회 최적화
+
+```
+    @GetMapping("/api/v5/orders")
+    public List<OrderQueryDto> orderV5(){
+        return orderQueryRepository.findOrderQueryDto_optimization();
+
+    }
+
+    ✅ OrderRepository - 추가 코드
+
+    public List<OrderQueryDto> findOrderQueryDto_optimization() {
+
+        List<OrderQueryDto> result = findOrders(); // query 1번 : order find
+
+        Map<Long, List<OrderItemQueryDto>> orderItemMap = findOrderItemMap(toOrderIds(result));
+
+        result.forEach(o -> o.setOrderItems(orderItemMap.get(o.getOrderId())));
+        // orderId로 orderItemList를 가져와 order의 orderItem에 set
+        return result;
+    }
+
+    private Map<Long, List<OrderItemQueryDto>> findOrderItemMap(List<Long> orderIds) {
+        List<OrderItemQueryDto> orderItems = em.createQuery("select new jpabook.jpashop.repository.order.query.OrderItemQueryDto(oi.order.id,i.name,oi.orderPrice, oi.count )" +
+                        " from OrderItem oi" +
+                        " join oi.item i" +
+                        " where oi.order.id in :orderIds", OrderItemQueryDto.class)
+                .setParameter("orderIds", orderIds)
+                .getResultList(); // query 1번 : orderItem find
+
+        // 쿼리 한번 날리고 메모리에서 맵으로 orderItem 매칭(order와 orderItem) = 쿼리 총 2번 나감
+        Map<Long, List<OrderItemQueryDto>> orderItemMap = orderItems.stream()
+                .collect(Collectors.groupingBy(orderItemQueryDto -> orderItemQueryDto.getOrderId()));
+        // orderId를 key로 하고 orderItemList를 value로 하는 map 생성
+        return orderItemMap;
+    }
+
+    private static List<Long> toOrderIds(List<OrderQueryDto> result) {
+        List<Long> orderIds = result.stream()
+                .map(o -> o.getOrderId())
+                .collect(Collectors.toList()); // orderId 리스트 생성
+        return orderIds;
+    }
+
+```
+- query: 루트 1번, 컬렉션 1번
+- ToOne 관계들을 먼저 조회하고, 여기서 얻은 식별자 orderId로 ToMany 관계인 OrderItem을 한꺼번에 조회
+- MAP을 사용해서 매칭성능 향상(O(1))
+
+<BR><bR>
+
+### 주문 조회 V6: JPA에서 DTO로 직접 조회, 플랫 데이터 최적화
+
+```
+@GetMapping("/api/v6/orders")
+    public List<OrderQueryDto> orderV6(){
+        List<OrderFlatDto> flats = orderQueryRepository.findOrderQueryDto_flat();
+
+        // OrderFlatDto -> OrderQueryDto
+        return flats.stream()
+                .collect(groupingBy(o -> new OrderQueryDto(o.getOrderId(), o.getName(), o.getOrderDate(), o.getOrderStatus(), o.getAddress()),
+                        mapping(o -> new OrderItemQueryDto(o.getOrderId(), o.getItemName(), o.getOrderPrice(), o.getCount()), toList())
+                )).entrySet().stream()
+                .map(e -> new OrderQueryDto(e.getKey().getOrderId(), e.getKey().getName(), e.getKey().getOrderDate(), e.getKey().getOrderStatus(), e.getKey().getAddress(), e.getValue()))
+                .collect(toList());
+    }
+```
+- queyr : 1번
+- 단점
+    - 쿼리는 한번이지만 조인으로 인해 DB에서 애플리케이션에 전달하는 데이터에 중복 데이터가 추가되므로 상황에 따라 V5보다 더 느릴 수 있음
+    - 애플리케이션에서 추가 작업이 큼
+    - 페이지 불가능(ORDER를 기준으로 할때)
+
+
+<BR><bR>
+
+
