@@ -136,4 +136,4 @@ public interface Slice<T> extends Streamable<T> {
     Page<MemberDto> map = page.map(member -> new MemberDto(member.getId(), member.getUsername(), null));
     // 이제 api로 반환 가능!!
 ```
-<br>
+<br><br>

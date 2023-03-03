@@ -168,6 +168,7 @@ List<Member> result = queryFactory.selectFrom(member)
 
 ### 페이징
 
+
 ```
 ✅ 조회 건수 제한
 List<Member> result = queryFactory.selectFrom(member)
@@ -184,7 +185,7 @@ QueryResults<Member> queryResults = queryFactory.selectFrom(member)
                 .limit(2)
                 .fetchResults();
 
-````
+```
 
 > 주의: count 쿼리가 실행되니 성능상 주의!!
 
@@ -281,3 +282,245 @@ List<Member> result = queryFactory
 
 - from 절에 여러 엔티티를 선택해서 세타 조인
 - 외부조인 불가능 ➡️ 다음의 조인 on을 사용하면 외부 조인 가능!
+
+<br><Br>
+
+### 조인 - on절
+
+1. 조인대상 필터링
+
+2. 연관관계 없는 엔티티 외부 조인
+
+<br>
+
+#### 1. 조인 대상 필터링
+ex) 회원과 팀을 조인하면서, 팀이름이 teamA인 팀만 조인, 회원은 모두 조회
+
+```
+        /**
+        * 회원과 팀을 조인하면서, 팀이름이 teamA인 팀만 조인, 회원은 모두 조회
+        * JPQL : select m, t from Member m left join m.team t on t.name = 'teamA'
+        * SQL: SELECT m.*, t.* FROM Member m LEFT JOIN Team t ON m.TEAM_ID=t.id and t.name='teamA'
+        */
+        List<Tuple> result = queryFactory.select(member, team)
+                .from(member)
+                .leftJoin(member.team, team)
+                .on(team.name.eq("teamA")) // innerJoin은 where로 하는게 좋음(같은 쿼리 나감)
+                .fetch();
+
+
+ ➡️ 결과(left 조인!)
+ t=[Member(id=3, username=member1, age=10), Team(id=1, name=teamA)]
+t=[Member(id=4, username=member2, age=20), Team(id=1, name=teamA)]
+t=[Member(id=5, username=member3, age=30), null]
+t=[Member(id=6, username=member4, age=40), null]
+```
+- on 절을 활용해 조인 대상을 필터링 할때, 외부 조인이 아니라 내부 조인(inner join)을 사용하면, where 절에서 필터링 하는 것과 기능이 동일!
+  - 따라서, on절을 활용한 조인대상 필터링을 사용할때, 내부조인이면 익숙한 where절로 해결하고, 정말 외부조인이 필요한 경우에만 이 기능 사용
+
+<br>
+
+#### 2. 연관관계 없는 엔티티 외부조인
+
+ex) 회원의 이름과 팀의 이름이 같은 대상 **외부조인**
+
+```
+        /**
+        * 연관관계가 없는 엔티티 외부 조인
+        * 회원의 이름과 팀 이름이 같은 대상 외부 조인
+        * SQL:  SELECT m.*, t.* FROM Member m LEFT JOIN Team t ON m.username = t.name
+        */
+        List<Tuple> result = queryFactory
+                .select(member, team)
+                .from(member)
+                .leftJoin(team).on(member.username.eq(team.name)) // 회원이름=팀이름 인 경우 가져옴
+                .fetch();
+
+ ➡️ 결과(left 조인!)
+t=[Member(id=3, username=member1, age=10), null]
+t=[Member(id=4, username=member2, age=20), null]
+t=[Member(id=5, username=member3, age=30), null]
+t=[Member(id=6, username=member4, age=40), null]
+t=[Member(id=7, username=teamA, age=0), Team(id=1, name=teamA)]
+t=[Member(id=8, username=teamB, age=0), Team(id=2, name=teamB)]
+```
+
+- 주의! 문법을 잘 봐야 함! `leftJoin()` 부분에 일반 조인과 다르게 엔티티 하나만 들어감
+  - 일반조인: `leftJoin(member.team, team)` : 이땐 member.team_id == team.id 조건문이 들어감 + on절 조건문
+  - on 조인: `from(member).leftJoin(team).on(xxx) ` : 조건문이 on절의 xxx만 들어감
+
+<br><br>
+
+### 조인 - 페치조인
+
+. SQL조인을 활용해서 연관된 엔티티를 SQL 한번에
+조회하는 기능
+
+주로 성능 최적화에 사용하는 방법!
+
+<br>
+
+        ✅ 페치 조인 미적용
+
+        Member findMember = queryFactory
+                .selectFrom(member)
+                .where(member.username.eq("member1"))
+                .fetchOne();
+
+        // 현재 멤버.team은 프록시 상태!
+
+        ✅ 페치 조인 적용
+
+        Member findMember = queryFactory
+                .selectFrom(member)
+                .join(member.team, team).fetchJoin() // 페치조인 적용
+                .where(member.username.eq("member1"))
+                .fetchOne();
+
+        // 현재 멤버.team은 실제 객체 상태!
+
+
+- 사용방법     
+  -  join(), leftJoin() 등 조인 기능 뒤에 fetchJoin() 이라고 추가하면 된다
+
+<br><br>
+
+### 서브쿼리
+
+- `com.querydsl.jpa.JPAExpressions` 사용
+
+```
+    /**
+     * 나이가 가장 많은 회원 조회
+     * 서브쿼리 eq 사용
+     */
+     List<Member> result = queryFactory
+                .selectFrom(member)
+                .where(member.age.eq(
+                        JPAExpressions.select(memberSub.age.max())
+                                .from(memberSub)
+                ))
+                .fetch();
+
+        /**
+     * 나이가 평균 이상인 회원 조회
+     * 서브쿼리 goe 사용
+     */
+     List<Member> result = queryFactory
+                .selectFrom(member)
+                .where(member.age.goe(
+                        JPAExpressions.select(memberSub.age.avg())
+                                .from(memberSub)
+                ))
+                .fetch();
+
+        /**
+     * 나이가 평균 이상인 회원 조회
+     * 서브쿼리 여러건 처리, in 사용
+     */
+     List<Member> result = queryFactory
+                .selectFrom(member)
+                .where(member.age.in(
+                        JPAExpressions.select(memberSub.age)
+                                .from(memberSub)
+                                .where(memberSub.age.gt(10))
+                ))
+                .fetch();
+
+        /**
+        * select절 서브쿼리
+        */
+        List<Tuple> result = queryFactory
+                .select(member.username,
+                        JPAExpressions.select(memberSub.age.avg())
+                                .from(memberSub))
+                .from(member)
+                .fetch();
+```
+- **from 절의 서브쿼리 한계**
+  - JPA JPQL 서브쿼리의 한계점으로 from 절의 서브쿼리는 지원하지 않음
+  - 당연히 Querydsl도 지원하지 않음. 
+
+- **from 절의 서브쿼리 해결방안**
+  - 서브쿼리를 join으로 변경(가능한 상황도 있고, 불가능한 상황도 있음)
+  - 애플리케이션에서 쿼리를 2번 분리해서 실행
+  - nativeSQL 사용
+
+<BR><bR>
+
+### Case 문
+
+select, 조건절(where), order by에서 사용 가능
+
+```
+        ✅ 단순한 조건
+
+        List<String> result = queryFactory.select(member.age
+                        .when(10).then("열살")
+                        .when(20).then("스무살")
+                        .otherwise("기타"))
+                .from(member)
+                .fetch();
+
+        ✅ 복잡한 조건
+
+        List<String> result = queryFactory
+                .select(new CaseBuilder()
+                        .when(member.age.between(0,20)).then("0-20")
+                        .when(member.age.between(21,30)).then("21-30")
+                        .otherwise("기타"))
+                .from(member)
+                .fetch();
+```
+
+- orderBy에서 Case문 함께 사용하기 
+
+예를 들어서 다음과 같은 임의의 순서로 회원을 출력하고 싶다면?
+1. 0 ~ 30살이 아닌 회원을 가장 먼저 출력
+2. 0 ~ 20살 회원 출력
+3. 21 ~ 30살 회원 출력
+
+```
+        NumberExpression<Integer> rankPath = new CaseBuilder()
+                .when(member.age.between(0,20)).then(2)
+                .when(member.age.between(21,30)).then(1)
+                .otherwise(3);
+
+        List<Tuple> result = queryFactory
+                .select(member.username, member.age, rankPath)
+                .from(member)
+                .orderBy(rankPath.desc())
+                .fetch();
+```
+
+- Querydsl은 자바 코드로 작성하기 때문에 rankPath 처럼 복잡한 조건을 변수로 선언해서 select 절, orderBy 절에서 함께 사용할 수 있다.
+
+<br><Br>
+
+### 상수, 문자 더하기
+
+ ✅상수: constant
+
+```
+List<Tuple> result = queryFactory.select(member.username, Expressions.constant("A"))
+                .from(member)
+                .fetch();    
+```
+> 참고: 위와 같이 최적화가 가능하면 SQL에 constant 값을 넘기지 않음. 상수를 더하는 것 처럼 최적화가 어려우면 SQL에 constant 값을 넘김
+
+
+
+ ✅ 문자 더하기: concat
+
+```
+// {username}_{age} 생성
+List<String> fetch = queryFactory
+        .select(member.username.concat("_").concat(member.age.stringValue()))
+        .from(member)
+        .where(member.username.eq("member1"))
+        .fetch();
+```
+
+> 참고: member.age.stringValue() 부분이 중요한데, 문자가 아닌 다른 타입들은 stringValue() 로 문자로 변환할 수 있다. 이 방법은 ENUM을 처리할 때도 자주 사용한다
+
+
