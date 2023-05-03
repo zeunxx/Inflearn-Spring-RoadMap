@@ -74,7 +74,7 @@ List<String> values = map.get("keyA");
     - 데이터 형식은 주로 JSON 사용
     - POST, PUT, PATCH
 
-<br>
+<br><Br>
 
 ### 1️⃣ 요청 파라미터 - 쿼리 파라미터, HTML Form
 
@@ -114,7 +114,7 @@ public class RequestParamController {
 
 ```
 
-<br>
+<br><br>
 
 ### 2️⃣ 요청 파라미터 - @RequestParam
 
@@ -226,3 +226,219 @@ public String requestParamMap(@RequestParam Map<String, Object> paramMap){
 ➡️ 파라미터의 값이 1개가 확실하다면 Map 을 사용해도 되지만, 그렇지 않다면 MultiValueMap 을 사용하자.
 
 + 근데 웬만하면 파라미터 값은 1개를 씀
+
+<br><Br>
+
+### 2️⃣ 요청 파라미터 - @ModelAttribute
+```
+@RequestParam String username;
+@RequestParam int age;
+HelloData data = new HelloData();
+data.setUsername(username);
+data.setAge(age);
+```
+- spring은 이 과정을 완전히 자동화 해주는 @ModelAttribute 기능 제공
+
+<br>
+
+```
+    @ResponseBody
+    @RequestMapping("/model-attribute-v1")
+    public String modelAttribute(@ModelAttribute HelloData helloData){
+
+        log.info("username={}, age={}", helloData.getUsername(), helloData.getAge());
+
+        return "ok";
+    }
+
+```
+
+➡️ 스프링MVC는 @ModelAttribute 가 있으면 다음을 실행한다
+
+1. HelloData 객체를 생성한다.
+2. 요청 파라미터의 이름으로 HelloData 객체의 프로퍼티를 찾는다. 
+3. 해당 프로퍼티의 setter를
+호출해서 파라미터의 값을 입력(바인딩) 한다.
+- 예) 파라미터 이름이 username 이면 setUsername() 메서드를 찾아서 호출하면서 값을 입력한다.
+
+<br>
+
+💡 **프로퍼티**
+- 객체에 getUsername() , setUsername() 메서드가 있으면, 이 객체는 username 이라는 프로퍼티를
+가지고 있다.
+- username 프로퍼티의 값을 변경하면 setUsername() 이 호출되고, 조회하면 getUsername() 이
+호출된다.
+    ```
+    class HelloData {
+        getUsername();
+        setUsername();
+    }
+    ```
+
+<br>
+
+@ModelAttribute 생략 가능!!
+```
+    @ResponseBody
+    @RequestMapping("/model-attribute-v2")
+    public String modelAttributeV2(HelloData helloData){
+
+        log.info("username={}, age={}", helloData.getUsername(), helloData.getAge());
+
+        return "ok";
+    }
+```
+<br>
+
+💡 **@ModelAttribute와 @RequestParam 모두 생략 가능!**
+- 스프링은 해당 생략시 다음과 같은 규칙을 적용한다.
+- String , int , Integer 같은 단순 타입 = @RequestParam
+- 나머지 = @ModelAttribute (argument resolver 로 지정해둔 타입 외)
+
+<br><br>
+
+### 4️⃣ 요청메시지 - 단순 텍스트
+
+- HTTP message body에 데이터를 직접 담아서 요청
+    - HTTP API에 주로 사용, JSON, XML, TEXT
+    - 데이터 형식은 주로 JSON 사용
+    - POST, PUT, PATCH
+
+요청 파라미터와 다르게, HTTP 메시지 바디를 통해 데이터가 직접 데이터로 넘어오는 경우, @RequestParam, @ModelAddtribute를 사용할 수 없음
+- 물론 HTML Form 형식으로 전달되는 경우는 요청 파라미터로
+인정됨
+
+
+<br>
+
+```
+@PostMapping("/request-body-string-v1")
+public void requestBodyString(HttpServletRequest request, HttpServletResponse response) throws IOException{
+    ServletInputStream inputStream = request.getInputStream();
+
+    String messageBody = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
+
+    log.info("messageBody={}", messageBody);
+    response.getWriter().write("ok");
+}
+
+@PostMapping("/request-body-string-v2")
+public void requestBodyStringV2(InputStream inputStream, Writer responseWriter) throws IOException{
+    String messageBody = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
+
+    log.info("messageBody={}", messageBody);
+    responseWriter.write("ok");
+}
+```
+
+- 가장 단순한 텍스트 메시지를 http 메시지 바디에 담아서 전송하고 읽음
+- HTTP 메시지 바디의 데이터를 InputStream 을 사용해서 직접 읽을 수 있음
+
+<br>
+
+```
+@PostMapping("/request-body-string-v3")
+public HttpEntity<String> requestBodyStringV3(HttpEntity<String> httpEntity) throws IOException{
+
+    String body = httpEntity.getBody();
+    log.info("messageBody={}", body);
+    return new HttpEntity<>("ok");
+}
+```
+
+- HttpEntity: HTTP header, body 정보를 편리하게 조회
+    - 메시지 바디 정보를 직접 조회
+    - 요청 파라미터를 조회하는 기능과 관계 없음 @RequestParam X, @ModelAttribute X
+- HttpEntity는 응답에도 사용 가능
+    - 메시지 바디 정보 직접 반환
+    - 헤더 정보 포함 가능
+    - view 조회X
+
+<br>
+
+HttpEntity 를 상속받은 다음 객체들도 같은 기능을 제공한다.
+- RequestEntity
+    - HttpMethod, url 정보가 추가, 요청에서 사용
+- ResponseEntity
+    - HTTP 상태 코드 설정 가능, 응답에서 사용
+    - return new ResponseEntity<String>("Hello World", responseHeaders, HttpStatus.CREATED)
+
+<br>
+
+#### 최종 
+```
+@ResponseBody
+@PostMapping("/request-body-string-v4")
+public String requestBodyStringV4(@RequestBody String messageBody) throws IOException{
+    log.info("messageBody={}", messageBody);
+    return "ok";
+}
+```
+
+- @RequestBody
+    - @RequestBody 를 사용하면 HTTP 메시지 바디 정보를 편리하게 조회할 수 있다. 
+    - 참고로 헤더 정보가 필요하다면 HttpEntity 를 사용하거나 @RequestHeader 를 사용하면 된다.
+    - 이렇게 메시지 바디를 직접 조회하는 기능은 요청 파라미터를 조회하는 @RequestParam , @ModelAttribute 와는 전혀 관계가 없다.
+
+<br>
+
+- 요청 파라미터 vs HTTP 메시지 바디
+    - 요청 파라미터를 조회하는 기능: @RequestParam , @ModelAttribute
+    - HTTP 메시지 바디를 직접 조회하는 기능: @RequestBody
+
+- @ResponseBody
+    - @ResponseBody 를 사용하면 응답 결과를 HTTP 메시지 바디에 직접 담아서 전달할 수 있다.
+    - 물론 이 경우에도 view를 사용하지 않는다.
+
+<br><Br>
+
+### 5️⃣ 요청 메시지 - JSON
+
+```
+// 최종 JSON 사용 코드
+@ResponseBody
+@PostMapping("/request-body-json-v3")
+public String requestBodyJsonV3(@RequestBody HelloData helloData) {
+    
+    log.info("username ={}, age ={}", helloData.getUsername(),helloData.getAge());
+
+    return "ok";
+}
+
+// 반환도 객체 반환 가능!
+@ResponseBody
+    @PostMapping("/request-body-json-v5")
+    public HelloData requestBodyJsonV5(@RequestBody HelloData helloData) {
+
+        log.info("username ={}, age ={}", helloData.getUsername(),helloData.getAge());
+
+        return helloData;
+    }
+```
+
+- **@RequestBody 객체 파라미터**
+    - @RequestBody HelloData data
+    - @RequestBody 에 직접 만든 객체를 지정할 수 있다.
+    - HttpEntity , @RequestBody 를 사용하면 HTTP 메시지 컨버터가 HTTP 메시지 바디의 내용을 우리가 원하는 문자나 객체 등으로 변환해줌
+    - 생략 불가능!
+
+<br>
+
+➡️ HelloData에 @RequestBody 를 생략하면 @ModelAttribute 가 적용되어버린다.
+
+HelloData data @ModelAttribute HelloData data
+따라서 생략하면 HTTP 메시지 바디가 아니라 요청 파라미터를 처리하게 된다
+
+<br>
+
+> 주의
+> HTTP 요청시에 content-type이 application/json인지 꼭! 확인해야 한다. 그래야 JSON을 처리할 수
+있는 HTTP 메시지 컨버터가 실행된다.
+
+<br>
+
+#### 🔎 @RequestBody 요청
+: JSON 요청 → HTTP 메시지 컨버터 → 객체
+
+#### 🔎 @ResponseBody 응답
+: 객체 → HTTP 메시지 컨버터 → JSON 응답
