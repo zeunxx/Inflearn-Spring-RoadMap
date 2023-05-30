@@ -44,3 +44,27 @@
 <br>
 
 ### RedirectAttributes
+
+저장이 잘 되었으면 상품 상세 화면에 "저장되었습니다"라는 메시지를 보여달라는 요구사항이 왔다
+
+```
+    @PostMapping("/add")
+    public String addItemV5(Item item, RedirectAttributes redirectAttributes){
+        // Item -> item이 modelAttribute에 담기게 됨
+        Item savedItem = itemRepository.save(item);
+        redirectAttributes.addAttribute("itemId",savedItem.getId());
+        redirectAttributes.addAttribute("status",true); // 쿼리 파라미터로 넘어가게 됨
+
+        return "redirect:/basic/items/{itemId}";
+    }
+```
+
+### RedirectAttributes
+RedirectAttributes 를 사용하면 URL 인코딩도 해주고, pathVarible , 쿼리 파라미터까지 처리해준다.
+- redirect:/basic/items/{itemId}
+    - pathVariable 바인딩: {itemId}
+    - 나머지는 쿼리 파라미터로 처리: `?status=true`
+
+➕ 뷰 템플릿에 status가 true일 경우 저장완료 뜨게 th:if 추가
+
+<img width="636" alt="image" src="https://github.com/zeunxx/Inflearn-Spring-RoadMap/assets/81572478/dddd4743-1cdf-473b-b4ae-707204b3ab98">
