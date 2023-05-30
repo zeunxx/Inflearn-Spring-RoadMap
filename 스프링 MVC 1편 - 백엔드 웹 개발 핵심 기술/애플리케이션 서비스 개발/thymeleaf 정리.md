@@ -89,6 +89,17 @@ th:onclick="|location.href='@{/basic/items/add}'|"
 
 <br>
 
+### 속성 변경 - th:action
+`th:action`
+- HTML form에서 action 에 값이 없으면 현재 URL에 데이터를 전송한다.
+- 상품 등록 폼의 URL과 실제 상품 등록을 처리하는 URL을 똑같이 맞추고 HTTP 메서드로 두 기능을
+구분한다.
+    - 상품 등록 폼: GET /basic/items/add
+    - 상품 등록 처리: POST /basic/items/add
+- 이렇게 하면 하나의 URL로 등록 폼과, 등록 처리를 깔끔하게 처리할 수 있다.
+
+<br>
+
 > 참고
 > 타임리프는 순수 HTML 파일을 웹 브라우저에서 열어도 내용을 확인할 수 있고, 서버를 통해 뷰 템플릿을
 거치면 동적으로 변경된 결과를 확인할 수 있다. JSP를 생각해보면, JSP 파일은 웹 브라우저에서 그냥 열면
