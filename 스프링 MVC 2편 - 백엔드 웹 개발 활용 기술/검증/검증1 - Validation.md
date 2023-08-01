@@ -515,3 +515,328 @@ required: 필수 값 입니다
 
 
 스프링은 MessageCodesResolver 라는 것으로 이러한 기능을 지원한다.
+
+<br><Br>
+
+### 오류 코드와 메시지 처리4
+
+#### DefaultMessageCodesResolver의 기본 메시지 생성 규칙
+
+1️⃣ 객체 오류
+객체 오류의 경우 다음 순서로 2가지 생성
+
+1.: code + "." + object name
+2.: code
+<Br>
+
+예) 오류 코드: required, object name: item
+1.: required.item
+2.: required
+
+<br>
+
+2️⃣ 필드 오류
+
+필드 오류의 경우 다음 순서로 4가지 메시지 코드 생성
+1.: code + "." + object name + "." + field
+2.: code + "." + field
+3.: code + "." + field type
+4.: code
+<br>
+
+예) 오류 코드: typeMismatch, object name "user", field "age", field type: int
+1. "typeMismatch.user.age"
+2. "typeMismatch.age"
+3. "typeMismatch.int"
+4. "typeMismatch"
+
+<br><br>
+
+#### 동작 방식
+- rejectValue() , reject() 는 내부에서 MessageCodesResolver 를 사용한다. 여기에서 메시지
+코드들을 생성한다.
+- FieldError , ObjectError 의 생성자를 보면, 오류 코드를 하나가 아니라 여러 오류 코드를 가질 수 있다.
+- MessageCodesResolver 를 통해서 생성된 순서대로 오류 코드를 보관한다.
+- 이 부분을 BindingResult 의 로그를 통해서 확인해보자.
+    - codes [range.item.price, range.price, range.java.lang.Integer, range]
+
+<br>
+
+🔎 FieldError : rejectValue("itemName", "required")
+다음 4가지 오류 코드를 자동으로 생성
+- required.item.itemName
+- required.itemName
+- required.java.lang.String
+- required
+
+<br>
+
+🔎 ObjectError reject("totalPriceMin")
+다음 2가지 오류 코드를 자동으로 생성
+- totalPriceMin.item
+- totalPriceMin
+
+<Br>
+
+🔎 오류 메시지 출력
+
+타임리프 화면을 렌더링 할 때 th:errors 가 실행된다. 만약 이때 오류가 있다면 생성된 오류 메시지 코드를 순서대로 돌아가면서 메시지를 찾는다. 
+그리고 없으면 디폴트 메시지를 출력한다
+
+<br><br>
+
+### 오류 코드와 메시지 처리5
+
+오류 코드 관리 전략
+
+**핵심은 구체적인 것에서! 덜 구체적인 것으로!**
+
+MessageCodesResolver 는 required.item.itemName 처럼 구체적인 것을 먼저 만들어주고,
+required 처럼 덜 구체적인 것을 가장 나중에 만든다.
+이렇게 하면 앞서 말한 것 처럼 메시지와 관련된 공통 전략을 편리하게 도입할 수 있다.
+<Br>
+
+**왜 이렇게 복잡하게 사용하는가?**
+모든 오류 코드에 대해서 메시지를 각각 다 정의하면 개발자 입장에서 관리하기 너무 힘들다.
+크게 중요하지 않은 메시지는 범용성 있는 requried 같은 메시지로 끝내고, 정말 중요한 메시지는 꼭
+필요할 때 구체적으로 적어서 사용하는 방식이 더 효과적이다.
+
+<br>
+
+itemName 의 경우 required 검증 오류 메시지가 발생하면 다음 코드 순서대로 메시지가 생성된다.
+1. required.item.itemName
+2. required.itemName
+3. required.java.lang.String
+4. required
+
+<Br>
+
+그리고 이렇게 생성된 메시지 코드를 기반으로 순서대로 MessageSource 에서 메시지에서 찾는다.
+
+<Br>
+
+구체적인 것에서 덜 구체적인 순서대로 찾는다. 메시지에 1번이 없으면 2번을 찾고, 2번이 없으면 3번을
+찾는다.
+
+이렇게 되면 만약에 크게 중요하지 않은 오류 메시지는 기존에 정의된 것을 그냥 **재활용** 하면 된다!
+
+<Br>
+
+#### ValidationUtils
+
+**ValidationUtils 사용 전**
+```
+if (!StringUtils.hasText(item.getItemName())) {
+ bindingResult.rejectValue("itemName", "required", "기본: 상품 이름은
+필수입니다.");
+}
+```
+
+<br>
+
+**ValidationUtils 사용 후**
+
+다음과 같이 한줄로 가능, 제공하는 기능은 Empty , 공백 같은 단순한 기능만 제공
+```
+ValidationUtils.rejectIfEmptyOrWhitespace(bindingResult, "itemName",
+"required");
+```
+
+#### 정리
+1. rejectValue() 호출
+2. MessageCodesResolver 를 사용해서 검증 오류 코드로 메시지 코드들을 생성
+3. new FieldError() 를 생성하면서 메시지 코드들을 보관
+4. th:erros 에서 메시지 코드들로 메시지를 순서대로 메시지에서 찾고, 노출
+
+<br><Br>
+
+#### 오류 코드와 메시지 처리6
+
+
+검증 오류 코드는 다음과 같이 2가지로 나눌 수 있다.
+- 개발자가 직접 설정한 오류 코드 ➡️ rejectValue() 를 직접 호출
+- 스프링이 직접 검증 오류에 추가한 경우(주로 타입 정보가 맞지 않음)
+
+<br>
+
+price 필드에 문자 "A"를 입력해보자.
+
+로그를 확인해보면 BindingResult 에 FieldError 가 담겨있고, 다음과 같은 메시지 코드들이 생성된
+것을 확인할 수 있다.
+
+`codes[typeMismatch.item.price,typeMismatch.price,typeMismatch.java.lang.Integer,typeMismatch]`
+
+<Br>
+
+다음과 같이 4가지 메시지 코드가 입력되어 있다.
+- typeMismatch.item.price
+- typeMismatch.price
+- typeMismatch.java.lang.Integer
+- typeMismatch
+
+<br>
+스프링은 타입 오류가 발생하면 typeMismatch 라는 오류 코드를 사용한다. 이 오류 코드가
+MessageCodesResolver 를 통하면서 4가지 메시지 코드가 생성된 것이다
+
+<br><Br>
+
+
+**실행해보자.**
+
+errors.properties 에 메시지 코드가 없기 때문에 스프링이 생성한 기본 메시지가 출력된다.
+
+`Failed to convert property value of type java.lang.String to required type java.lang.Integer for property price; nested exception is java.lang.NumberFormatException: For input string: "A"`
+
+➡️ 바꾸고 싶다면 error.properties에 추가!
+
+<br><BR>
+
+### Validator 분리
+
+컨트롤러에서 검증 로직이 차지하는 부분은 매우 크다. 이런 경우 별도의 클래스로 역할을 분리하는 것이 좋다. 
+
+그리고 이렇게 분리한 검증 로직을 재사용 할 수도 있다
+
+<br>
+
+```
+✅ validator
+
+@Component
+public class ItemValidator implements Validator {
+
+    @Override
+    public boolean supports(Class<?> clazz) {
+        return Item.class.isAssignableFrom(clazz);
+        // item == clazz
+        // item == subItem
+    }
+
+    @Override
+    public void validate(Object target, Errors errors) {
+        Item item = (Item) target;
+        ValidationUtils.rejectIfEmptyOrWhitespace(errors,"itemName","required");
+
+        if (!StringUtils.hasText(item.getItemName())){
+            errors.rejectValue("itemName","required");
+        }
+        if(item.getPrice()==null || item.getPrice()<1000 || item.getPrice() > 1000000){
+            errors.rejectValue("price","range",new Object[]{1000,1000000},null);
+        }
+        if(item.getQuantity()==null || item.getQuantity() >= 9999){
+            errors.rejectValue("quantity","max",new Object[]{9999},null);
+        }
+
+        // 특정 필드가 아닌 복합 룰 검증
+        if(item.getPrice()!=null && item.getQuantity()!=null){
+            int resultPrice = item.getPrice() * item.getQuantity();
+            if(resultPrice < 10000){
+                errors.reject("totalPriceMin", new Object[]{10000,resultPrice},null);
+            }
+        }
+
+
+    }
+}
+
+- supports() {} : 해당 검증기를 지원하는 여부 확인(뒤에서 설명)
+- validate(Object target, Errors errors) : 검증 대상 객체와 BindingResult
+
+
+✅ controller
+
+itemValidator.validate(item, bindingResult);
+```
+
+<br><br>
+
+### Validator 분리2
+
+스프링이 Validator 인터페이스를 별도로 제공하는 이유는 체계적으로 검증 기능을 도입하기 위해서다. 
+그런데 앞에서는 검증기를 직접 불러서 사용했고, 이렇게 사용해도 된다. 
+그런데 Validator 인터페이스를
+사용해서 검증기를 만들면 스프링의 추가적인 도움을 받을 수 있다
+
+<br>
+
+#### WebDataBinder를 통해서 사용하기
+WebDataBinder 는 스프링의 파라미터 바인딩의 역할을 해주고 검증 기능도 내부에 포함한다.
+
+<br>
+
+```
+✅ controller
+
+@InitBinder
+public void init(WebDataBinder dataBinder) {
+    log.info("init binder {}", dataBinder);
+    dataBinder.addValidators(itemValidator);
+}
+
+...
+
+
+@PostMapping("/add")
+public String addItemV6(@Validated @ModelAttribute Item item, BindingResult bindingResult, RedirectAttributes redirectAttributes, Model model) {
+    //@Validated에 의해 item 자동 검증
+
+    // 검증에 실패하면 다시 입력 폼으로
+    if(bindingResult.hasErrors()){
+        log.info("errors = {}",bindingResult);
+        return "validation/v2/addForm";
+    }
+
+    // 성공 로직
+    Item savedItem = itemRepository.save(item);
+    redirectAttributes.addAttribute("itemId", savedItem.getId());
+    redirectAttributes.addAttribute("status", true);
+    return "redirect:/validation/v2/items/{itemId}";
+}
+```
+
+이렇게 WebDataBinder 에 검증기를 추가하면 해당 컨트롤러에서는 검증기를 자동으로 적용할 수 있다.
+@InitBinder 해당 컨트롤러에만 영향을 준다. 글로벌 설정은 별도로 해야한다. 
+
+<br>
+
+#### 동작 방식
+@Validated 는 검증기를 실행하라는 애노테이션이다.
+이 애노테이션이 붙으면 앞서 WebDataBinder 에 등록한 검증기를 찾아서 실행한다. 
+
+그런데 여러 검증기를 등록한다면 그 중에 어떤 검증기가 실행되어야 할지 구분이 필요하다. 이때 supports() 가 사용된다.
+
+여기서는 supports(Item.class) 호출되고, 결과가 true 이므로 ItemValidator 의 validate() 가
+호출된다.
+
+<br>
+
+#### 글로벌 설정 - 모든 컨트롤러에 다 적용
+
+```
+@SpringBootApplication
+public class ItemServiceApplication implements WebMvcConfigurer {
+
+	public static void main(String[] args) {
+		SpringApplication.run(ItemServiceApplication.class, args);
+	}
+
+	@Override
+	public Validator getValidator() {
+		return new ItemValidator();
+	}
+}
+```
+
+이렇게 글로벌 설정을 추가할 수 있다. 기존 컨트롤러의 @InitBinder 를 제거해도 글로벌 설정으로 정상
+동작하는 것을 확인할 수 있다. 이어지는 다음 강의를 위해서 글로벌 설정은 꼭 제거해두자.
+
+<BR>
+
+> 주의
+> 글로벌 설정을 하면 다음에 설명할 BeanValidator가 자동 등록되지 않는다. 글로벌 설정 부분은 주석처리
+해두자. 참고로 글로벌 설정을 직접 사용하는 경우는 드물다.
+참고
+> 검증시 @Validated @Valid 둘다 사용가능하다.
+> javax.validation.@Valid 를 사용하려면 build.gradle 의존관계 추가가 필요하다.
+> `implementation 'org.springframework.boot:spring-boot-starter-validation'`
+> @Validated 는 스프링 전용 검증 애노테이션이고, @Valid 는 자바 표준 검증 애노테이션이다.
