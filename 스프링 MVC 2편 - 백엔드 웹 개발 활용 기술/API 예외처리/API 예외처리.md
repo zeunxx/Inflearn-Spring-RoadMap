@@ -749,3 +749,80 @@ public ErrorResult exHandle(Exception e) {
 
 > 참고: HTMP 오류 화면
 >  ModelAndView 를 사용해서 오류 화면(HTML)을 응답하는데 사용할 수도 있다.
+
+<br><br>
+
+### API 예외 처리 - @ControllerAdvice
+
+
+@ExceptionHandler 를 사용해서 예외를 깔끔하게 처리할 수 있게 되었지만, 정상 코드와 예외 처리
+코드가 하나의 컨트롤러에 섞여 있다. 
+
+
+@ControllerAdvice 또는 @RestControllerAdvice 를 사용하면
+둘을 분리할 수 있다.
+
+
+
+```
+@Slf4j
+@RestControllerAdvice
+public class ExControllerAdvice {
+
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ErrorResult illegalExHandler(IllegalArgumentException e){
+        log.error("[exceptionHandler] ex",e);
+        return new ErrorResult("BAD", e.getMessage());
+    }
+
+    @ExceptionHandler
+    public ResponseEntity<ErrorResult> userExHandler(UserException e){
+        log.error("[exceptionHandler] ex",e);
+
+        ErrorResult errorResult = new ErrorResult("USER-EX", e.getMessage());
+        return new ResponseEntity<>(errorResult, HttpStatus.BAD_REQUEST);
+    }
+
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    @ExceptionHandler
+    public ErrorResult exHandler(Exception e){
+        log.error("[exceptionHandler] ex",e);
+
+        return new ErrorResult("EX","내부 오류");
+    }
+}
+```
+
+
+#### @ControllerAdvice
+- @ControllerAdvice 는 대상으로 지정한 여러 컨트롤러에 @ExceptionHandler , @InitBinder 기능을 부여해주는 역할을 한다.
+- @ControllerAdvice 에 대상을 지정하지 않으면 모든 컨트롤러에 적용된다. (글로벌 적용)
+- @RestControllerAdvice 는 @ControllerAdvice 와 같고, @ResponseBody 가 추가되어 있다. @Controller , @RestController 의 차이와 같다.
+
+
+<Br>
+
+#### 대상 컨트롤러 지정 방법
+
+```
+// Target all Controllers annotated with @RestController
+@ControllerAdvice(annotations = RestController.class) // 특정 컨트롤러
+public class ExampleAdvice1 {}
+
+// Target all Controllers within specific packages
+@ControllerAdvice("org.example.controllers") // 특정 패키지에 포함된 컨트롤러
+public class ExampleAdvice2 {}
+
+// Target all Controllers assignable to specific classes
+@ControllerAdvice(assignableTypes = {ControllerInterface.class,
+AbstractController.class}) // 부모클래스/특정 컨트롤러 지정 가능
+public class ExampleAdvice3 {}
+```
+- 대상 생략시 모든 컨트롤러에 적용
+
+
+<br>
+
+#### 정리
+@ExceptionHandler 와 @ControllerAdvice 를 조합하면 예외를 깔끔하게 해결할 수 있다.
